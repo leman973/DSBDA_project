@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, validator
 import pandas as pd
 import httpx
 import logging
+import pdfplumber
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -126,6 +127,20 @@ def load_dataframe(dataset_id: str) -> pd.DataFrame:
         return pd.read_csv(file_path)
     elif file_path.endswith((".xlsx", ".xls")):
         return pd.read_excel(file_path)
+    elif file_path.endswith(".pdf"):
+        # Extract tables from PDF using pdfplumber
+        with pdfplumber.open(file_path) as pdf:
+            all_tables = []
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in tables:
+                    if table and len(table) > 1:
+                        all_tables.append(table)
+            if not all_tables:
+                raise HTTPException(status_code=400, detail="No tables found in PDF.")
+            # Use the first table found
+            df = pd.DataFrame(all_tables[0][1:], columns=all_tables[0][0])
+            return df
     else:
         raise HTTPException(status_code=400, detail="Unsupported file format")
 
@@ -193,9 +208,9 @@ async def upload_dataset(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None
 ):
-    """Upload a CSV or XLSX file"""
+    """Upload a CSV, XLSX, or PDF file"""
     # Validate file type
-    allowed_extensions = [".csv", ".xlsx", ".xls"]
+    allowed_extensions = [".csv", ".xlsx", ".xls", ".pdf"]
     file_ext = Path(file.filename).suffix.lower()
     
     if file_ext not in allowed_extensions:

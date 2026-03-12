@@ -302,7 +302,7 @@ export default function DataAnalysisAssistant() {
     e.preventDefault();
     setIsDragOver(false);
     const files = Array.from(e.dataTransfer.files).filter(
-      f => f.name.endsWith(".csv") || f.name.endsWith(".xlsx")
+      f => f.name.endsWith(".csv") || f.name.endsWith(".xlsx") || f.name.endsWith(".pdf")
     );
     if (files.length) {
       await uploadFiles(files);
@@ -487,7 +487,7 @@ export default function DataAnalysisAssistant() {
           <UploadIcon />
           Upload Dataset
         </button>
-        <input ref={fileInputRef} type="file" accept=".csv,.xlsx" multiple style={{ display: "none" }} onChange={handleFileInput} />
+        <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.pdf" multiple style={{ display: "none" }} onChange={handleFileInput} />
 
         {/* Drop Zone */}
         <div
@@ -510,7 +510,7 @@ export default function DataAnalysisAssistant() {
         >
           <FileIcon />
           <span style={{ fontSize: 13, color: "hsl(270, 20%, 45%)", fontWeight: 500, textAlign: "center" }}>
-            Drop CSV or XLSX here 📁
+            Drop CSV, XLSX, or PDF here 📁
           </span>
         </div>
 
@@ -633,7 +633,7 @@ export default function DataAnalysisAssistant() {
                   }}>to get started</span>
                 </div>
                 <div style={{ fontSize: 15, color: "hsl(270, 20%, 50%)" }}>
-                  Drop a CSV in the sidebar and let's gooo 🚀
+                  Drop a CSV, Excel, or PDF in the sidebar and let's gooo 🚀
                 </div>
               </div>
             </>
