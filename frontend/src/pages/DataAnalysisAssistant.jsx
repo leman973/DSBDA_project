@@ -263,7 +263,7 @@ function ChartDisplay({ chartSpec, data }) {
   return null;
 }
 
-export default function DataAnalysisAssistant() {
+export default function DataAnalysisAssistant({ onLogout }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [datasets, setDatasets] = useState([]);
   const [selectedDataset, setSelectedDataset] = useState(null);
@@ -271,12 +271,17 @@ export default function DataAnalysisAssistant() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
+  const [userInfo, setUserInfo] = useState(null);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  // Get token from localStorage
+  const getToken = () => localStorage.getItem('token');
 
   // Check API connection on mount
   useEffect(() => {
     checkConnection();
+    fetchUserInfo();
   }, []);
 
   // Scroll to bottom of messages
@@ -295,6 +300,26 @@ export default function DataAnalysisAssistant() {
     } catch (error) {
       console.error('API connection failed:', error);
       setConnectionError('Cannot connect to backend. Make sure the server is running on port 8000.');
+    }
+  };
+
+  const fetchUserInfo = async () => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      
+      const response = await fetch(`${API_BASE}/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUserInfo(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user info:', error);
     }
   };
 
@@ -323,8 +348,12 @@ export default function DataAnalysisAssistant() {
         const formData = new FormData();
         formData.append('file', file);
         
+        const token = getToken();
         const response = await fetch(`${API_BASE}/datasets/upload`, {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
           body: formData,
         });
         
@@ -357,9 +386,13 @@ export default function DataAnalysisAssistant() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     
     try {
+      const token = getToken();
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           message: userMessage,
           dataset_id: selectedDataset.id,
@@ -420,19 +453,39 @@ export default function DataAnalysisAssistant() {
         gap: 16,
       }}>
         {/* Sidebar Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 4 }}>
-          <BoltIcon />
-          <span style={{
-            fontSize: 18,
-            fontWeight: 700,
-            background: "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%))",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-          }}>
-            Datasets
-          </span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 4, marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <BoltIcon />
+            <span style={{
+              fontSize: 18,
+              fontWeight: 700,
+              background: "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%))",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}>
+              Datasets
+            </span>
+          </div>
         </div>
+        
+        {/* User Info */}
+        {userInfo && (
+          <div style={{
+            padding: '10px 14px',
+            borderRadius: '12px',
+            background: 'white',
+            border: '1px solid hsl(270, 20%, 90%)',
+            marginBottom: 8,
+          }}>
+            <div style={{ fontSize: 13, color: 'hsl(270, 20%, 50%)', marginBottom: 4 }}>
+              Logged in as
+            </div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'hsl(270, 30%, 25%)' }}>
+              @{userInfo.username}
+            </div>
+          </div>
+        )}
 
         {/* Connection Error */}
         {connectionError && (
@@ -550,6 +603,49 @@ export default function DataAnalysisAssistant() {
             ))}
           </div>
         )}
+        
+        {/* Logout Button */}
+        <button
+          onClick={() => {
+            if (confirm('Are you sure you want to logout?')) {
+              onLogout();
+            }
+          }}
+          style={{
+            marginTop: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            padding: '12px 20px',
+            borderRadius: 12,
+            border: '1px solid hsl(270, 20%, 85%)',
+            background: 'white',
+            color: 'hsl(270, 30%, 40%)',
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: "'Space Grotesk', sans-serif",
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = 'hsl(0, 70%, 95%)';
+            e.currentTarget.style.borderColor = 'hsl(0, 70%, 80%)';
+            e.currentTarget.style.color = 'hsl(0, 70%, 40%)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = 'white';
+            e.currentTarget.style.borderColor = 'hsl(270, 20%, 85%)';
+            e.currentTarget.style.color = 'hsl(270, 30%, 40%)';
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Logout
+        </button>
       </div>
 
       {/* Main Area */}

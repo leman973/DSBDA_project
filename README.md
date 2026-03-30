@@ -2,6 +2,13 @@
 
 A natural language data analysis tool that allows users to upload datasets and query them using plain English. The application uses an LLM (Mistral via Ollama) to understand user queries and perform data analysis.
 
+## 🔐 New Features
+
+- **User Authentication** - Secure login/register with JWT tokens
+- **Access Control** - User-specific datasets with ownership
+- **PostgreSQL Database** - Production-ready data persistence
+- **Docker Support** - One-command deployment with docker-compose
+
 ## Architecture
 
 ```
@@ -33,19 +40,45 @@ DSBDA_project/
 
 ## Features
 
-- **File Upload**: Support for CSV and XLSX files
+- **User Authentication**: Secure registration and login with JWT tokens
+- **Access Control**: User-specific datasets - only you can see your data
+- **File Upload**: Support for CSV, XLSX, and PDF files
 - **Natural Language Queries**: Ask questions in plain English
 - **Data Analysis**: Statistical summaries and insights
-- **Chart Support**: Vega-Lite chart specifications
+- **Chart Support**: Vega-Lite chart specifications (bar, line, scatter, pie charts)
 - **Real-time Chat**: Interactive conversation with the LLM
+- **Docker Deployment**: Production-ready containerization
 
 ## Prerequisites
 
+### For Docker Deployment (Recommended):
+1. **Docker Desktop** - Docker and docker-compose
+2. **Ollama** - Running on host machine with Mistral model
+
+### For Local Development:
 1. **Node.js** (v18+) - For running the frontend
 2. **Python 3.10+** - For running the backend
-3. **Ollama** - For running the Mistral LLM
+3. **PostgreSQL 15+** - Database server
+4. **Ollama** - For running the Mistral LLM
 
 ## Installation & Setup
+
+### Quick Start (Docker - Recommended)
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for detailed Docker setup instructions.
+
+```bash
+# Clone and configure
+cp .env.example .env
+# Edit .env and change SECRET_KEY
+
+# Start all services
+docker-compose up --build
+
+# Access at http://localhost:5173
+```
+
+### Local Development Setup
 
 ### 1. Install Ollama
 
@@ -109,10 +142,20 @@ npm run dev
 
 ## API Endpoints
 
+### Authentication
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/datasets/upload` | POST | Upload a CSV/XLSX file |
-| `/api/datasets` | GET | List all datasets |
+| `/api/auth/register` | POST | Register new user |
+| `/api/auth/login` | POST | Login and get JWT token |
+| `/api/auth/me` | GET | Get current user info |
+
+### Datasets (All require authentication)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/datasets/upload` | POST | Upload a CSV/XLSX/PDF file |
+| `/api/datasets` | GET | List all datasets (user's own) |
 | `/api/datasets/{id}` | GET | Get dataset information |
 | `/api/datasets/{id}/data` | GET | Get paginated data |
 | `/api/datasets/{id}/summary` | GET | Get statistical summary |
@@ -127,10 +170,19 @@ npm run dev
 # Ollama URL (default: http://localhost:11434)
 OLLAMA_URL=http://localhost:11434
 
+# Database Configuration
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dsbda_db
+
+# JWT Authentication (REQUIRED - Change in production!)
+SECRET_KEY=your-secret-key-change-in-production-min-32-chars
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
 # Server config
 HOST=0.0.0.0
 PORT=8000
 ```
+
+See `.env.example` for full list of configuration options.
 
 ## Troubleshooting
 
@@ -154,9 +206,12 @@ Error: model 'mistral' not found
 
 ## Tech Stack
 
-- **Frontend**: React 19, Vite 7, Tailwind CSS 4
-- **Backend**: Python, FastAPI, Pandas
+- **Frontend**: React 19, Vite 7, Tailwind CSS 4, React Router DOM
+- **Backend**: Python, FastAPI, Pandas, SQLAlchemy
+- **Database**: PostgreSQL 15
+- **Authentication**: JWT (JSON Web Tokens), Bcrypt password hashing
 - **LLM**: Ollama with Mistral model
+- **Deployment**: Docker, Docker Compose
 
 ## License
 

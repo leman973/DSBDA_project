@@ -11,7 +11,8 @@ build/
 # Virtual environment
 venv/
 .env
-.env.*
+# Keep .env.example but ignore actual .env files
+!.env.example
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints

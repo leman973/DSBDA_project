@@ -10,14 +10,21 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field, validator
 import pandas as pd
 import httpx
 import logging
 import pdfplumber
+import json
+import models
+from database import engine, get_db
+from auth_router import get_current_user
+from auth_utils import get_password_hash
+from schemas import UserRegister, DatasetInfo as DatasetSchema, ChatRequest, ChatResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +37,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Create database tables
+models.Base.metadata.create_all(bind=engine)
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -39,6 +49,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include authentication router
+from auth_router import router as auth_router
+app.include_router(auth_router)
+
 # Configuration
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -46,8 +60,8 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50MB max file size
 MAX_ROWS_IN_MEMORY = 100000  # Limit rows for in-memory processing
 
-# Global state (in production, use a database)
-datasets: Dict[str, Dict[str, Any]] = {}
+# Global state (in-memory cache, database is source of truth)
+datasets_cache: Dict[str, Dict[str, Any]] = {}
 
 # ============= Data Models =============
 
@@ -203,12 +217,14 @@ async def root():
         "ollama_model": get_ollama_model()
     }
 
-@app.post("/api/datasets/upload", response_model=DatasetInfo)
+@app.post("/api/datasets/upload", response_model=DatasetSchema)
 async def upload_dataset(
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks = None,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """Upload a CSV, XLSX, or PDF file"""
+    """Upload a CSV, XLSX, or PDF file (requires authentication)"""
     # Validate file type
     allowed_extensions = [".csv", ".xlsx", ".xls", ".pdf"]
     file_ext = Path(file.filename).suffix.lower()
@@ -270,42 +286,112 @@ async def upload_dataset(
             file_path.unlink()
         raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
     
-    # Store dataset info
-    dataset_info = {
-        "id": dataset_id,
-        "name": file.filename,
-        "file_path": str(file_path),
-        "rows": len(df),
-        "columns": len(df.columns),
-        "columns_info": get_columns_info(df),
-        "created_at": datetime.now().isoformat()
+    # Store dataset in database
+    columns_info = get_columns_info(df)
+    dataset = models.Dataset(
+        id=dataset_id,
+        name=file.filename,
+        file_path=str(file_path),
+        original_filename=file.filename,
+        rows=len(df),
+        columns=len(df.columns),
+        columns_info=json.dumps(columns_info),
+        owner_id=current_user.id
+    )
+    
+    db.add(dataset)
+    db.commit()
+    db.refresh(dataset)
+    
+    # Cache dataset info for quick access
+    datasets_cache[dataset_id] = {
+        "id": dataset.id,
+        "name": dataset.name,
+        "file_path": dataset.file_path,
+        "rows": dataset.rows,
+        "columns": dataset.columns,
+        "columns_info": columns_info,
+        "created_at": dataset.created_at.isoformat(),
+        "owner_id": dataset.owner_id
     }
     
-    datasets[dataset_id] = dataset_info
+    return DatasetSchema(**{
+        "id": dataset.id,
+        "name": dataset.name,
+        "rows": dataset.rows,
+        "columns": dataset.columns,
+        "columns_info": columns_info,
+        "created_at": dataset.created_at,
+        "owner_id": dataset.owner_id
+    })
+
+@app.get("/api/datasets", response_model=List[DatasetSchema])
+async def list_datasets(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all datasets owned by the current user"""
+    user_datasets = db.query(models.Dataset).filter(
+        models.Dataset.owner_id == current_user.id
+    ).all()
     
-    return DatasetInfo(**dataset_info)
+    result = []
+    for ds in user_datasets:
+        columns_info = json.loads(ds.columns_info) if ds.columns_info else []
+        result.append(DatasetSchema(
+            id=ds.id,
+            name=ds.name,
+            rows=ds.rows,
+            columns=ds.columns,
+            columns_info=columns_info,
+            created_at=ds.created_at,
+            owner_id=ds.owner_id
+        ))
+    
+    return result
 
-@app.get("/api/datasets", response_model=List[DatasetInfo])
-async def list_datasets():
-    """List all uploaded datasets"""
-    return [DatasetInfo(**ds) for ds in datasets.values()]
-
-@app.get("/api/datasets/{dataset_id}", response_model=DatasetInfo)
-async def get_dataset(dataset_id: str):
-    """Get dataset information"""
-    if dataset_id not in datasets:
+@app.get("/api/datasets/{dataset_id}", response_model=DatasetSchema)
+async def get_dataset(
+    dataset_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get dataset information (requires ownership)"""
+    dataset = db.query(models.Dataset).filter(
+        models.Dataset.id == dataset_id,
+        models.Dataset.owner_id == current_user.id
+    ).first()
+    
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    return DatasetInfo(**datasets[dataset_id])
+    
+    columns_info = json.loads(dataset.columns_info) if dataset.columns_info else []
+    return DatasetSchema(
+        id=dataset.id,
+        name=dataset.name,
+        rows=dataset.rows,
+        columns=dataset.columns,
+        columns_info=columns_info,
+        created_at=dataset.created_at,
+        owner_id=dataset.owner_id
+    )
 
 @app.get("/api/datasets/{dataset_id}/data")
 async def get_dataset_data(
     dataset_id: str, 
     limit: int = 100, 
     offset: int = 0,
-    filters: Optional[str] = None
+    filters: Optional[str] = None,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """Get dataset data with optional pagination and filters"""
-    if dataset_id not in datasets:
+    """Get dataset data with optional pagination and filters (requires ownership)"""
+    dataset = db.query(models.Dataset).filter(
+        models.Dataset.id == dataset_id,
+        models.Dataset.owner_id == current_user.id
+    ).first()
+    
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     # Validate pagination
@@ -342,9 +428,18 @@ async def get_dataset_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/datasets/{dataset_id}/summary")
-async def get_dataset_summary(dataset_id: str):
-    """Get dataset summary with statistics"""
-    if dataset_id not in datasets:
+async def get_dataset_summary(
+    dataset_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get dataset summary with statistics (requires ownership)"""
+    dataset = db.query(models.Dataset).filter(
+        models.Dataset.id == dataset_id,
+        models.Dataset.owner_id == current_user.id
+    ).first()
+    
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     try:
@@ -355,19 +450,28 @@ async def get_dataset_summary(dataset_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Send a chat message and get LLM response with data analysis"""
+async def chat(
+    request: ChatRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send a chat message and get LLM response with data analysis (requires ownership)"""
     
-    # Validate dataset exists
-    if request.dataset_id not in datasets:
+    # Validate dataset exists and user owns it
+    dataset = db.query(models.Dataset).filter(
+        models.Dataset.id == request.dataset_id,
+        models.Dataset.owner_id == current_user.id
+    ).first()
+    
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     try:
         df = load_dataframe(request.dataset_id)
-        dataset_info = datasets[request.dataset_id]
+        dataset_info_cached = datasets_cache.get(request.dataset_id, {})
         
         # Get column information
-        columns_info = dataset_info["columns_info"]
+        columns_info = json.loads(dataset.columns_info) if dataset.columns_info else []
         columns_str = ", ".join([f"{c['name']} ({c['type']})" for c in columns_info])
         
         # Get sample data (first 20 rows)
@@ -476,7 +580,7 @@ IMPORTANT: Always respond in valid JSON format."""
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
         cat_cols = df.select_dtypes(include=['object']).columns.tolist()
         
-        context = f"""Dataset: {dataset_info['name']}
+        context = f"""Dataset: {dataset.name}
 Columns: {columns_str}
 
 Numeric columns: {numeric_cols}
@@ -520,18 +624,32 @@ User question: {request.message}"""
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/datasets/{dataset_id}")
-async def delete_dataset(dataset_id: str):
-    """Delete a dataset"""
-    if dataset_id not in datasets:
+async def delete_dataset(
+    dataset_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a dataset (requires ownership)"""
+    dataset = db.query(models.Dataset).filter(
+        models.Dataset.id == dataset_id,
+        models.Dataset.owner_id == current_user.id
+    ).first()
+    
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
-    dataset = datasets[dataset_id]
-    file_path = Path(dataset["file_path"])
+    file_path = Path(dataset.file_path)
     
     if file_path.exists():
         file_path.unlink()
     
-    del datasets[dataset_id]
+    # Delete from database
+    db.delete(dataset)
+    db.commit()
+    
+    # Remove from cache
+    if dataset_id in datasets_cache:
+        del datasets_cache[dataset_id]
     
     return {"message": "Dataset deleted successfully"}
 
