@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import Index from "./pages/Index";
+import Landing from "./pages/Landing"
 import DataAnalysisAssistant from "./pages/DataAnalysisAssistant"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
@@ -31,22 +31,8 @@ function App() {
 
   if (isLoading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, hsl(270, 30%, 98%), hsl(280, 40%, 96%))',
-      }}>
-        <div style={{
-          width: 40,
-          height: 40,
-          border: '3px solid hsl(270, 20%, 80%)',
-          borderTopColor: 'hsl(280, 80%, 60%)',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="min-h-screen flex items-center justify-center gradient-sidebar">
+        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
       </div>
     )
   }
@@ -55,6 +41,7 @@ function App() {
     <Router>
       <Routes>
         {/* Public Routes */}
+        <Route path="/" element={<Landing />} />
         <Route 
           path="/login" 
           element={
@@ -82,10 +69,10 @@ function App() {
           } 
         />
         
-        {/* Default redirect */}
+        {/* Default redirect for unknown paths */}
         <Route 
-          path="/" 
-          element={<Navigate to={isAuthenticated ? "/app" : "/login"} />} 
+          path="*" 
+          element={<Navigate to="/" />} 
         />
       </Routes>
     </Router>

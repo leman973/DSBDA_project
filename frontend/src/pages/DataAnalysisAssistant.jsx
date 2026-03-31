@@ -1,166 +1,61 @@
 import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import embed from "vega-embed";
+import { 
+  TrendingUp, 
+  Upload, 
+  FileText, 
+  MessageSquare, 
+  Settings, 
+  LogOut, 
+  Plus, 
+  Zap, 
+  Cpu, 
+  LayoutDashboard,
+  Send,
+  Loader2,
+  Trash2,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  MoreVertical,
+  CheckCircle2
+} from "lucide-react";
+import { Link } from "react-router-dom";
 
 const API_BASE = "http://localhost:8000/api";
 
-const sparkles = "✨";
+// --- Components ---
 
-function GradientText({ children, className = "" }) {
+function ChatMessage({ message, isUser, chartSpec, data }) {
   return (
-    <span
-      className={className}
-      style={{
-        background: "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%), hsl(45, 95%, 60%))",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        backgroundClip: "text",
-      }}
+    <motion.div 
+      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} gap-2 mb-6 w-full`}
     >
-      {children}
-    </span>
-  );
-}
-
-function BoltIcon() {
-  return (
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: "50%",
-        background: "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%), hsl(45, 95%, 60%))",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-        <path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z" />
-      </svg>
-    </div>
-  );
-}
-
-function SparkleIcon() {
-  return (
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: "50%",
-        background: "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%), hsl(45, 95%, 60%))",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-        <path d="M12 2l1.5 6H20l-5.25 3.75L16.5 18 12 14.25 7.5 18l1.75-6.25L4 8h6.5L12 2z" />
-      </svg>
-    </div>
-  );
-}
-
-function FileIcon() {
-  return (
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="hsl(280, 60%, 70%)" strokeWidth="1.5">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="8" y1="13" x2="16" y2="13" />
-      <line x1="8" y1="17" x2="16" y2="17" />
-      <line x1="8" y1="9" x2="10" y2="9" />
-    </svg>
-  );
-}
-
-function UploadIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-      <polyline points="16 16 12 12 8 16" />
-      <line x1="12" y1="12" x2="12" y2="21" />
-      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-    </svg>
-  );
-}
-
-function LoadingSpinner() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'hsl(270, 20%, 50%)' }}>
-      <div style={{
-        width: 16,
-        height: 16,
-        border: '2px solid hsl(270, 20%, 80%)',
-        borderTopColor: 'hsl(280, 80%, 60%)',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite'
-      }} />
-      <span>Analyzing...</span>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
-}
-
-function CrystalBallIllustration() {
-  return (
-    <div style={{ position: "relative", width: 80, height: 80, margin: "0 auto" }}>
-      {/* Ball */}
-      <div style={{
-        width: 70,
-        height: 70,
-        borderRadius: "50%",
-        background: "radial-gradient(circle at 35% 35%, hsl(270, 30%, 40%), hsl(260, 40%, 18%))",
-        position: "relative",
-        boxShadow: "0 8px 32px hsla(270, 60%, 20%, 0.5), inset 0 2px 8px hsla(280, 60%, 70%, 0.2)",
-      }}>
-        {/* Sparkles on ball */}
-        <div style={{ position: "absolute", top: 14, right: 16, color: "hsl(45, 95%, 65%)", fontSize: 14 }}>✦</div>
-        <div style={{ position: "absolute", top: 28, left: 12, color: "hsl(45, 95%, 65%)", fontSize: 10 }}>✦</div>
-        <div style={{ position: "absolute", bottom: 20, right: 12, color: "hsl(280, 60%, 80%)", fontSize: 8 }}>✦</div>
-      </div>
-      {/* Base */}
-      <div style={{
-        width: 40,
-        height: 10,
-        background: "hsl(270, 20%, 25%)",
-        borderRadius: 4,
-        margin: "0 auto",
-        marginTop: -2,
-      }} />
-    </div>
-  );
-}
-
-// Message component for chat
-function ChatMessage({ message, isUser }) {
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: isUser ? 'flex-end' : 'flex-start',
-      gap: '4px',
-    }}>
-      <div style={{
-        maxWidth: '80%',
-        padding: '12px 16px',
-        borderRadius: '16px',
-        background: isUser 
-          ? 'linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%))'
-          : 'white',
-        color: isUser ? 'white' : 'hsl(270, 40%, 10%)',
-        fontSize: 14,
-        lineHeight: 1.5,
-        boxShadow: isUser ? 'none' : '0 2px 8px hsla(270, 20%, 50%, 0.1)',
-        border: isUser ? 'none' : '1px solid hsl(270, 20%, 90%)',
-      }}>
+      <div className={`
+        max-w-[85%] px-5 py-3.5 rounded-2xl text-sm leading-relaxed shadow-sm
+        ${isUser 
+          ? 'gradient-primary text-white rounded-tr-none shadow-primary/20' 
+          : 'glass bg-white/60 border-white/50 text-foreground/90 rounded-tl-none font-medium'}
+      `}>
         {message}
       </div>
-    </div>
+      
+      {(chartSpec || data) && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-2xl mt-2 overflow-hidden rounded-[2rem] glass-card border-white/40 p-6 flex flex-col gap-4"
+        >
+          <ChartDisplay chartSpec={chartSpec} data={data} />
+        </motion.div>
+      )}
+    </motion.div>
   );
 }
 
-// Chart component using Vega-Lite
 function ChartDisplay({ chartSpec, data }) {
   const chartRef = useRef(null);
   const [error, setError] = useState(null);
@@ -171,17 +66,25 @@ function ChartDisplay({ chartSpec, data }) {
     const renderChart = async () => {
       try {
         setError(null);
-        // Merge the chart spec with data if provided
         const spec = chartSpec.data ? chartSpec : { ...chartSpec, data: { values: data } };
         
         await embed(chartRef.current, spec, {
           actions: false,
           renderer: 'svg',
-          theme: 'light'
+          theme: 'light',
+          config: {
+            background: 'transparent',
+             axis: {
+              labelFont: 'Outfit, sans-serif',
+              titleFont: 'Outfit, sans-serif',
+              gridColor: 'hsla(var(--border), 0.5)'
+            },
+            view: { stroke: 'transparent' }
+          }
         });
       } catch (err) {
         console.error('Chart render error:', err);
-        setError('Failed to render chart');
+        setError('Visualization unavailable');
       }
     };
 
@@ -190,19 +93,13 @@ function ChartDisplay({ chartSpec, data }) {
 
   if (!chartSpec && !data) return null;
   
-  // Render Vega-Lite chart
   if (chartSpec) {
     return (
-      <div style={{
-        marginTop: '12px',
-        padding: '16px',
-        background: 'white',
-        borderRadius: '12px',
-        border: '1px solid hsl(270, 20%, 90%)',
-      }}>
-        <div ref={chartRef} style={{ width: '100%' }} />
+      <div className="w-full">
+        <div ref={chartRef} className="w-full overflow-hidden" />
         {error && (
-          <div style={{ color: 'hsl(0, 70%, 50%)', fontSize: 13, marginTop: 8 }}>
+          <div className="flex items-center gap-2 text-xs text-destructive font-bold uppercase tracking-wider mt-4">
+            <AlertCircle className="w-3 h-3" />
             {error}
           </div>
         )}
@@ -210,40 +107,25 @@ function ChartDisplay({ chartSpec, data }) {
     );
   }
   
-  // Simple table display for data
   if (data && data.length > 0) {
     const columns = Object.keys(data[0]);
     return (
-      <div style={{
-        marginTop: '12px',
-        overflowX: 'auto',
-        borderRadius: '12px',
-        border: '1px solid hsl(270, 20%, 90%)',
-      }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div className="overflow-x-auto rounded-2xl border border-white/40 bg-white/30">
+        <table className="w-full border-collapse text-[12px]">
           <thead>
-            <tr>
+            <tr className="bg-white/40">
               {columns.map(col => (
-                <th key={col} style={{
-                  padding: '10px 14px',
-                  textAlign: 'left',
-                  background: 'hsl(270, 20%, 95%)',
-                  fontWeight: 600,
-                  borderBottom: '1px solid hsl(270, 20%, 90%)',
-                }}>
+                <th key={col} className="px-4 py-3 text-left font-black uppercase tracking-widest opacity-40 border-b border-white/10">
                   {col}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.slice(0, 10).map((row, i) => (
-              <tr key={i}>
+            {data.slice(0, 5).map((row, i) => (
+              <tr key={i} className="hover:bg-white/20 transition-colors">
                 {columns.map(col => (
-                  <td key={col} style={{
-                    padding: '8px 14px',
-                    borderBottom: '1px solid hsl(270, 20%, 95%)',
-                  }}>
+                  <td key={col} className="px-4 py-2 opacity-70 border-b border-white/5 whitespace-nowrap">
                     {row[col] !== null ? row[col].toString() : '-'}
                   </td>
                 ))}
@@ -251,9 +133,9 @@ function ChartDisplay({ chartSpec, data }) {
             ))}
           </tbody>
         </table>
-        {data.length > 10 && (
-          <div style={{ padding: '8px', textAlign: 'center', color: 'hsl(270, 20%, 50%)', fontSize: 12 }}>
-            Showing 10 of {data.length} rows
+        {data.length > 5 && (
+          <div className="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-widest opacity-20">
+            Preview of {data.slice(0, 5).length} / {data.length} records
           </div>
         )}
       </div>
@@ -262,6 +144,8 @@ function ChartDisplay({ chartSpec, data }) {
   
   return null;
 }
+
+// --- Main Assistant Component ---
 
 export default function DataAnalysisAssistant({ onLogout }) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -272,73 +156,54 @@ export default function DataAnalysisAssistant({ onLogout }) {
   const [isLoading, setIsLoading] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Get token from localStorage
   const getToken = () => localStorage.getItem('token');
 
-  // Check API connection on mount
   useEffect(() => {
     checkConnection();
     fetchUserInfo();
+    fetchDatasets();
   }, []);
 
-  // Scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const checkConnection = async () => {
     try {
-      const response = await fetch(`${API_BASE}/health`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('API connected:', data);
-        setConnectionError(null);
-      }
+      const response = await fetch(`${API_BASE}/health`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (response.ok) setConnectionError(null);
     } catch (error) {
-      console.error('API connection failed:', error);
-      setConnectionError('Cannot connect to backend. Make sure the server is running on port 8000.');
+      setConnectionError('Backend Unreachable');
     }
   };
 
   const fetchUserInfo = async () => {
     try {
-      const token = getToken();
-      if (!token) return;
-      
       const response = await fetch(`${API_BASE}/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${getToken()}` }
       });
-      
+      if (response.ok) setUserInfo(await response.json());
+    } catch (error) { console.error(error); }
+  };
+
+  const fetchDatasets = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/datasets`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
       if (response.ok) {
         const data = await response.json();
-        setUserInfo(data);
+        setDatasets(data);
+        if (data.length > 0 && !selectedDataset) setSelectedDataset(data[0]);
       }
-    } catch (error) {
-      console.error('Failed to fetch user info:', error);
-    }
-  };
-
-  const handleDrop = async (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files).filter(
-      f => f.name.endsWith(".csv") || f.name.endsWith(".xlsx") || f.name.endsWith(".pdf")
-    );
-    if (files.length) {
-      await uploadFiles(files);
-    }
-  };
-
-  const handleFileInput = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length) {
-      await uploadFiles(files);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const uploadFiles = async (files) => {
@@ -347,495 +212,340 @@ export default function DataAnalysisAssistant({ onLogout }) {
       for (const file of files) {
         const formData = new FormData();
         formData.append('file', file);
-        
-        const token = getToken();
         const response = await fetch(`${API_BASE}/datasets/upload`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
+          headers: { 'Authorization': `Bearer ${getToken()}` },
           body: formData,
         });
-        
-        if (!response.ok) {
-          throw new Error(`Upload failed: ${response.statusText}`);
-        }
-        
+        if (!response.ok) throw new Error(`Upload failed`);
         const datasetInfo = await response.json();
-        setDatasets(prev => [...prev, datasetInfo]);
-        if (!selectedDataset) {
-          setSelectedDataset(datasetInfo);
-        }
+        setDatasets(prev => [datasetInfo, ...prev]);
+        setSelectedDataset(datasetInfo);
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      alert(`Error uploading files: ${error.message}`);
+      alert(`Upload failed`);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleDeleteDataset = async (e, id) => {
+    e.stopPropagation();
+    if (!confirm('Permanently delete this dataset?')) return;
+    try {
+      const response = await fetch(`${API_BASE}/datasets/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (response.ok) {
+        setDatasets(prev => prev.filter(ds => ds.id !== id));
+        if (selectedDataset?.id === id) setSelectedDataset(null);
+      }
+    } catch (error) { console.error(error); }
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedDataset || isLoading) return;
-    
     const userMessage = inputValue.trim();
     setInputValue("");
     setIsLoading(true);
-    
-    // Add user message to chat
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     
     try {
-      const token = getToken();
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${getToken()}`
         },
         body: JSON.stringify({
           message: userMessage,
           dataset_id: selectedDataset.id,
-          history: messages.slice(-10) // Send last 10 messages for context
+          history: messages.slice(-10)
         })
       });
-      
-      if (!response.ok) {
-        throw new Error(`Chat failed: ${response.statusText}`);
-      }
-      
       const result = await response.json();
-      
-      // Add assistant response to chat
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: result.response,
         chartSpec: result.chart_spec,
         data: result.data
       }]);
-      
     } catch (error) {
-      console.error('Chat error:', error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: `Error: ${error.message}` 
-      }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Orchestration error: ${error.message}` }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
   return (
-    <div style={{
-      display: "flex",
-      height: "100vh",
-      width: "100%",
-      fontFamily: "'Space Grotesk', sans-serif",
-      background: "hsl(270, 30%, 98%)",
-      color: "hsl(270, 40%, 10%)",
-    }}>
+    <div className="flex h-screen w-full bg-background overflow-hidden relative">
       {/* Sidebar */}
-      <div style={{
-        width: 300,
-        minWidth: 300,
-        background: "linear-gradient(180deg, hsl(280, 60%, 97%), hsl(320, 40%, 97%))",
-        borderRight: "1px solid hsl(270, 20%, 90%)",
-        display: "flex",
-        flexDirection: "column",
-        padding: "20px 16px",
-        gap: 16,
-      }}>
-        {/* Sidebar Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 4, marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <BoltIcon />
-            <span style={{
-              fontSize: 18,
-              fontWeight: 700,
-              background: "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%))",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}>
-              Datasets
-            </span>
-          </div>
-        </div>
-        
-        {/* User Info */}
-        {userInfo && (
-          <div style={{
-            padding: '10px 14px',
-            borderRadius: '12px',
-            background: 'white',
-            border: '1px solid hsl(270, 20%, 90%)',
-            marginBottom: 8,
-          }}>
-            <div style={{ fontSize: 13, color: 'hsl(270, 20%, 50%)', marginBottom: 4 }}>
-              Logged in as
-            </div>
-            <div style={{ fontWeight: 600, fontSize: 14, color: 'hsl(270, 30%, 25%)' }}>
-              @{userInfo.username}
-            </div>
-          </div>
-        )}
-
-        {/* Connection Error */}
-        {connectionError && (
-          <div style={{
-            padding: '10px',
-            borderRadius: '8px',
-            background: 'hsl(0, 70%, 95%)',
-            color: 'hsl(0, 70%, 40%)',
-            fontSize: 12,
-          }}>
-            {connectionError}
-          </div>
-        )}
-
-        {/* Upload Button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isLoading}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            padding: "12px 20px",
-            borderRadius: 50,
-            border: "none",
-            cursor: isLoading ? "not-allowed" : "pointer",
-            background: isLoading 
-              ? "hsl(270, 20%, 85%)" 
-              : "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%), hsl(45, 95%, 60%))",
-            color: "white",
-            fontWeight: 600,
-            fontSize: 15,
-            fontFamily: "'Space Grotesk', sans-serif",
-            boxShadow: isLoading ? "none" : "0 4px 16px hsla(280, 80%, 60%, 0.35)",
-            transition: "transform 0.15s, box-shadow 0.15s",
-            opacity: isLoading ? 0.7 : 1,
-          }}
-          onMouseOver={e => { 
-            if (!isLoading) {
-              e.currentTarget.style.transform = "translateY(-1px)"; 
-              e.currentTarget.style.boxShadow = "0 6px 20px hsla(280, 80%, 60%, 0.45)"; 
-            }
-          }}
-          onMouseOut={e => { 
-            if (!isLoading) {
-              e.currentTarget.style.transform = ""; 
-              e.currentTarget.style.boxShadow = "0 4px 16px hsla(280, 80%, 60%, 0.35)"; 
-            }
-          }}
+      <motion.aside 
+        animate={{ width: isSidebarOpen ? 300 : 80 }}
+        className="h-full glass border-r bg-white/20 border-white/30 backdrop-blur-3xl flex flex-col z-30 transition-all duration-300 relative shadow-2xl"
+      >
+        {/* Toggle Button */}
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="absolute top-10 -right-4 w-8 h-8 rounded-full border border-white/50 bg-white/80 shadow-md flex items-center justify-center text-foreground/40 hover:text-primary transition-all z-40"
         >
-          <UploadIcon />
-          Upload Dataset
+          {isSidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
         </button>
-        <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.pdf" multiple style={{ display: "none" }} onChange={handleFileInput} />
 
-        {/* Drop Zone */}
-        <div
-          onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={handleDrop}
-          style={{
-            border: `2px dashed ${isDragOver ? "hsl(280, 80%, 60%)" : "hsl(280, 60%, 80%)"}`,
-            borderRadius: 16,
-            padding: "24px 16px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 10,
-            background: isDragOver ? "hsla(280, 80%, 60%, 0.05)" : "transparent",
-            transition: "all 0.2s",
-            cursor: "pointer",
-          }}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <FileIcon />
-          <span style={{ fontSize: 13, color: "hsl(270, 20%, 45%)", fontWeight: 500, textAlign: "center" }}>
-            Drop CSV, XLSX, or PDF here 📁
-          </span>
+        <div className="p-6 pb-2">
+          <Link to="/" className="flex items-center gap-3 mb-10 group">
+            <div className="w-10 h-10 rounded-2xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
+              <TrendingUp className="text-white w-5 h-5" />
+            </div>
+            {isSidebarOpen && (
+              <span className="font-bold text-xl tracking-tighter uppercase whitespace-nowrap">
+                MarketBoost <span className="text-primary">AI</span>
+              </span>
+            )}
+          </Link>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className={`
+              w-full gradient-primary text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl shadow-primary/20 
+              hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50
+              ${isSidebarOpen ? 'py-4 text-sm' : 'h-10 w-10 p-0 mx-auto'}
+            `}
+          >
+            <Plus className="w-5 h-5" />
+            {isSidebarOpen && "Import Dataset"}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.pdf" multiple className="hidden" onChange={(e) => uploadFiles(e.target.files)} />
         </div>
 
-        {/* Dataset List or Empty */}
-        {datasets.length === 0 ? (
-          <div style={{ textAlign: "center", color: "hsl(270, 20%, 55%)", fontSize: 14, paddingTop: 8 }}>
-            No datasets yet 🐣
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
-            {datasets.map((ds, i) => (
-              <div
-                key={ds.id || i}
-                onClick={() => setSelectedDataset(ds)}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  background: selectedDataset?.id === ds.id
-                    ? "hsla(280, 80%, 60%, 0.12)"
-                    : "transparent",
-                  border: selectedDataset?.id === ds.id
-                    ? "1px solid hsla(280, 80%, 60%, 0.3)"
-                    : "1px solid transparent",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "hsl(270, 30%, 25%)",
-                  transition: "all 0.15s",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span style={{ fontSize: 16 }}>📊</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ds.name}</span>
+        <div className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide space-y-1">
+          {datasets.map((ds) => (
+            <div
+              key={ds.id}
+              onClick={() => setSelectedDataset(ds)}
+              className={`
+                group relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-200 overflow-hidden
+                ${selectedDataset?.id === ds.id 
+                  ? 'bg-primary/10 border-primary/20' 
+                  : 'hover:bg-white/40 border-transparent'}
+                border
+              `}
+            >
+              <div className={`
+                w-10 h-10 rounded-xl flex items-center justify-center text-sm shadow-sm
+                ${selectedDataset?.id === ds.id ? 'bg-primary text-white' : 'glass-card bg-white/60'}
+              `}>
+                <FileText className="w-5 h-5" />
               </div>
-            ))}
-          </div>
-        )}
-        
-        {/* Logout Button */}
-        <button
-          onClick={() => {
-            if (confirm('Are you sure you want to logout?')) {
-              onLogout();
-            }
-          }}
-          style={{
-            marginTop: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            padding: '12px 20px',
-            borderRadius: 12,
-            border: '1px solid hsl(270, 20%, 85%)',
-            background: 'white',
-            color: 'hsl(270, 30%, 40%)',
-            fontSize: 14,
-            fontWeight: 600,
-            fontFamily: "'Space Grotesk', sans-serif",
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'hsl(0, 70%, 95%)';
-            e.currentTarget.style.borderColor = 'hsl(0, 70%, 80%)';
-            e.currentTarget.style.color = 'hsl(0, 70%, 40%)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'white';
-            e.currentTarget.style.borderColor = 'hsl(270, 20%, 85%)';
-            e.currentTarget.style.color = 'hsl(270, 30%, 40%)';
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Logout
-        </button>
-      </div>
-
-      {/* Main Area */}
-      <div style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}>
-        {/* Top Bar */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "16px 24px",
-          borderBottom: "1px solid hsl(270, 20%, 90%)",
-          background: "hsl(270, 30%, 98%)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <SparkleIcon />
-            <span style={{ fontSize: 20, fontWeight: 700 }}>
-              <GradientText>Data Analysis </GradientText>
-              <span style={{ fontWeight: 600, color: "hsl(270, 40%, 10%)" }}>Assistant</span>
-            </span>
-          </div>
-
-          {/* Model Selector */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 14px",
-            borderRadius: 20,
-            border: "1px solid hsl(270, 20%, 88%)",
-            background: "white",
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: 500,
-            color: "hsl(270, 30%, 30%)",
-            boxShadow: "0 1px 4px hsla(270, 20%, 50%, 0.08)",
-          }}>
-            <div style={{
-              width: 22,
-              height: 22,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, hsl(200, 70%, 60%), hsl(230, 70%, 60%))",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}>
-              <span style={{ fontSize: 10 }}>⚡</span>
-            </div>
-            Mistral
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </div>
-        </div>
-
-        {/* Chat Area */}
-        <div style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          padding: 24,
-          gap: 16,
-          overflowY: "auto",
-          background: "hsl(270, 30%, 97%)",
-        }}>
-          {!selectedDataset ? (
-            <>
-              <CrystalBallIllustration />
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 10 }}>
-                  <GradientText>Upload a dataset </GradientText>
-                  <span style={{
-                    background: "linear-gradient(135deg, hsl(45, 95%, 55%), hsl(38, 90%, 55%))",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    backgroundClip: "text",
-                  }}>to get started</span>
-                </div>
-                <div style={{ fontSize: 15, color: "hsl(270, 20%, 50%)" }}>
-                  Drop a CSV, Excel, or PDF in the sidebar and let's gooo 🚀
-                </div>
-              </div>
-            </>
-          ) : messages.length === 0 ? (
-            <div style={{
-              width: "100%",
-              maxWidth: 700,
-              background: "white",
-              borderRadius: 16,
-              padding: "20px 24px",
-              border: "1px solid hsl(270, 20%, 90%)",
-              boxShadow: "0 2px 16px hsla(270, 20%, 50%, 0.08)",
-            }}>
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>
-                📊 {selectedDataset.name}
-              </div>
-              <div style={{ fontSize: 13, color: "hsl(270, 20%, 50%)" }}>
-                Ready to analyze. Ask me anything about this dataset! 
-                Try questions like "What are the column names?" or "Show me a summary of the data"
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: 800, margin: '0 auto', width: '100%' }}>
-              {messages.map((msg, i) => (
-                <div key={i}>
-                  <ChatMessage message={msg.content} isUser={msg.role === 'user'} />
-                  {(msg.chartSpec || msg.data) && <ChartDisplay chartSpec={msg.chartSpec} data={msg.data} />}
-                </div>
-              ))}
-              {isLoading && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 0' }}>
-                  <LoadingSpinner />
+              {isSidebarOpen && (
+                <div className="flex-1 min-w-0 pr-6">
+                  <p className="text-xs font-black uppercase tracking-widest text-foreground/40 mb-0.5">Dataset</p>
+                  <p className="text-sm font-bold truncate text-foreground/80">{ds.name}</p>
                 </div>
               )}
-              <div ref={messagesEndRef} />
+              {isSidebarOpen && (
+                <button 
+                  onClick={(e) => handleDeleteDataset(e, ds.id)}
+                  className="absolute right-3 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-destructive/10 text-destructive/40 hover:text-destructive transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          {datasets.length === 0 && isSidebarOpen && (
+            <div className="text-center py-10 opacity-20">
+              <div className="w-12 h-12 rounded-full border-2 border-dashed border-foreground/30 mx-auto mb-4 flex items-center justify-center">
+                <FileText className="w-6 h-6" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest">Nothing Imported</p>
             </div>
           )}
         </div>
 
-        {/* Input Bar */}
-        <div style={{
-          padding: "16px 24px",
-          borderTop: "1px solid hsl(270, 20%, 92%)",
-          background: "hsl(270, 30%, 98%)",
-        }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "14px 20px",
-            borderRadius: 50,
-            background: selectedDataset ? "white" : "hsl(270, 20%, 95%)",
-            border: "1px solid hsl(270, 20%, 88%)",
-            boxShadow: selectedDataset ? "0 2px 12px hsla(270, 20%, 50%, 0.1)" : "none",
-            transition: "all 0.2s",
-          }}>
-            <input
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={!selectedDataset || isLoading}
-              placeholder={selectedDataset ? "Ask about your data..." : "Upload and select a dataset to begin. ✨"}
-              style={{
-                flex: 1,
-                border: "none",
-                outline: "none",
-                background: "transparent",
-                fontSize: 15,
-                fontFamily: "'Space Grotesk', sans-serif",
-                color: selectedDataset ? "hsl(270, 40%, 10%)" : "hsl(270, 10%, 55%)",
-              }}
-            />
-            {selectedDataset && (
-              <button
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  border: "none",
-                  cursor: inputValue && !isLoading ? "pointer" : "default",
-                  background: inputValue && !isLoading
-                    ? "linear-gradient(135deg, hsl(280, 80%, 60%), hsl(320, 80%, 60%))"
-                    : "hsl(270, 20%, 88%)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "all 0.2s",
-                  flexShrink: 0,
-                }}
+        {/* Sidebar Footer / User */}
+        <div className="p-4 mt-auto">
+          <div className={`p-3 rounded-2xl glass border-white/40 flex items-center gap-3 overflow-hidden ${isSidebarOpen ? '' : 'justify-center p-2'}`}>
+            <div className="w-10 h-10 rounded-full bg-linear-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-black text-xs shrink-0 shadow-lg">
+              {userInfo?.username?.[0]?.toUpperCase() || "U"}
+            </div>
+            {isSidebarOpen && (
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold truncate">{userInfo?.username || "Researcher"}</p>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></div>
+                  <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Pro Plan</span>
+                </div>
+              </div>
+            )}
+            {isSidebarOpen && (
+              <button 
+                onClick={onLogout}
+                className="p-2 rounded-xl border border-white/50 bg-white/50 text-foreground/40 hover:text-destructive hover:bg-destructive/5 transition-all"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
-                </svg>
+                <LogOut className="w-4 h-4" />
               </button>
             )}
           </div>
         </div>
-      </div>
+      </motion.aside>
 
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-      `}</style>
+      {/* Main Container */}
+      <main className="flex-1 flex flex-col min-w-0 relative h-full">
+        {/* Top Header */}
+        <header className="h-20 flex items-center justify-between px-8 z-20 backdrop-blur-md bg-white/5 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-4">
+             <div className="flex flex-col">
+              <h2 className="text-sm font-black uppercase tracking-widest text-foreground/30 leading-none mb-1">Active Space</h2>
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                <LayoutDashboard className="w-5 h-5 text-primary" />
+                Data Analysis Orchestration
+              </h1>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 p-1.5 rounded-full glass border-white/50">
+              <div className="px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-xs font-bold text-primary flex items-center gap-2 shadow-sm">
+                <Cpu className="w-3.5 h-3.5" />
+                Mistral v0.3
+                <div className="w-1 h-1 rounded-full bg-primary"></div>
+              </div>
+              <button className="p-1.5 rounded-full hover:bg-white transition-colors text-foreground/40">
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-8 relative scrollbar-hide flex flex-col">
+          <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col">
+            <AnimatePresence mode="popLayout">
+              {messages.length === 0 && !selectedDataset ? (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="flex-1 flex flex-col items-center justify-center text-center opacity-80"
+                >
+                  <div className="relative mb-8">
+                    <div className="absolute inset-0 bg-primary/20 rounded-full blur-[100px] animate-pulse"></div>
+                    <div className="glass-card aspect-square w-32 rounded-[3rem] flex items-center justify-center relative border-white/50">
+                      <Zap className="w-12 h-12 text-primary" />
+                    </div>
+                  </div>
+                  <h3 className="text-3xl font-black mb-4 tracking-tighter uppercase whitespace-pre-wrap">Intelligence <br /><span className="text-primary italic">Awaits</span> Your Data</h3>
+                  <p className="text-sm font-medium text-foreground/30 max-w-sm">
+                    Drop a file in the sidebar to begin orchestration. Our AI will analyze your data structures in real-time.
+                  </p>
+                  
+                  <div className="mt-12 grid grid-cols-2 gap-4">
+                    {["Smart Prediction", "Automated Viz", "Data Cleaning", "Trend Detection"].map(text => (
+                      <div key={text} className="px-4 py-2 rounded-full border border-white/40 glass text-[10px] font-black uppercase tracking-widest text-foreground/30 flex items-center gap-2">
+                        <CheckCircle2 className="w-3 h-3 text-secondary" />
+                        {text}
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              ) : messages.length === 0 ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex-1 flex flex-col items-center justify-center py-20"
+                >
+                  <div className="glass-card p-10 rounded-[3rem] border-white/40 shadow-2xl text-center max-w-md">
+                   <div className="w-16 h-16 rounded-3xl gradient-primary flex items-center justify-center text-white mx-auto mb-6 shadow-lg shadow-primary/20">
+                      <FileText className="w-8 h-8" />
+                   </div>
+                    <h3 className="text-2xl font-black mb-2">{selectedDataset.name}</h3>
+                    <p className="text-sm font-semibold opacity-30 uppercase tracking-widest mb-8">{selectedDataset.rows} Rows • {selectedDataset.columns} Fields</p>
+                    <div className="space-y-3">
+                      <button onClick={() => setInputValue("Analyze this dataset")} className="w-full py-3 rounded-2xl glass hover:bg-white/60 text-xs font-bold border-white/30 transition-all">"Provide a high-level summary"</button>
+                      <button onClick={() => setInputValue("Show me the top 5 records")} className="w-full py-3 rounded-2xl glass hover:bg-white/60 text-xs font-bold border-white/30 transition-all">"Show me distribution charts"</button>
+                    </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="w-full space-y-4 py-10">
+                  {messages.map((msg, idx) => (
+                    <ChatMessage 
+                      key={idx} 
+                      message={msg.content} 
+                      isUser={msg.role === 'user'} 
+                      chartSpec={msg.chartSpec}
+                      data={msg.data}
+                    />
+                  ))}
+                  {isLoading && (
+                    <div className="flex items-center gap-3 px-4 py-2 text-foreground/30 font-bold uppercase tracking-widest text-[10px]">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      Synthesizing Insights...
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} className="h-20" />
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Input Bar */}
+        <div className="px-8 pb-8 pt-2 z-10">
+          <div className="max-w-4xl mx-auto relative">
+             <div className="absolute inset-0 bg-primary/5 rounded-[2.5rem] blur-2xl -z-10"></div>
+             <div className={`
+              relative glass backdrop-blur-2xl p-2 rounded-[2.5rem] border-white focus-within:border-primary/40 transition-all duration-300 shadow-2xl
+              ${!selectedDataset && 'opacity-50 grayscale pointer-events-none'}
+             `}>
+               <div className="flex items-center gap-3">
+                 <div className="w-12 h-12 shrink-0 rounded-full glass border-white flex items-center justify-center text-foreground/20">
+                    <MessageSquare className="w-5 h-5" />
+                 </div>
+                 <input 
+                  type="text" 
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  placeholder={selectedDataset ? `Message orchestration about ${selectedDataset.name}...` : "Import a dataset to begin..."}
+                  className="flex-1 bg-transparent border-none outline-none text-sm font-medium placeholder:text-foreground/20"
+                 />
+                 <button 
+                  onClick={handleSendMessage}
+                  disabled={!inputValue.trim() || isLoading}
+                  className={`
+                    w-12 h-12 shrink-0 rounded-[1.25rem] flex items-center justify-center transition-all shadow-lg
+                    ${inputValue.trim() ? 'gradient-primary text-white shadow-primary/20 scale-105' : 'bg-muted/30 text-foreground/20'}
+                  `}
+                 >
+                   <Send className="w-5 h-5" />
+                 </button>
+               </div>
+             </div>
+             {selectedDataset && (
+               <div className="flex items-center justify-center gap-6 mt-4 opacity-30">
+                  <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest">
+                    <div className="w-1 h-1 rounded-full bg-foreground"></div> Secured with TLS 1.3
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest">
+                    <div className="w-1 h-1 rounded-full bg-foreground"></div> End-to-end Encryption
+                  </div>
+               </div>
+             )}
+          </div>
+        </div>
+      </main>
+
+      {/* Connection Indicator */}
+      {connectionError && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2 rounded-full glass border-destructive/20 bg-destructive/10 text-destructive text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-2xl animate-bounce">
+          <div className="w-1.5 h-1.5 rounded-full bg-destructive mr-1"></div>
+          {connectionError}
+        </div>
+      )}
     </div>
   );
 }

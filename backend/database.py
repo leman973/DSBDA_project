@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 # Get database URL from environment or use SQLite default
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql://postgres:postgres@localhost:5432/dsbda_db"
+    "sqlite:///./sql_app.db"
 )
 
 # Create SQLAlchemy engine
