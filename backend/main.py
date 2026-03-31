@@ -23,7 +23,7 @@ import pdfplumber
 import json
 import models
 from database import engine, get_db
-from auth_router import get_current_user
+from auth_router import router as auth_router, get_current_user
 from auth_utils import get_password_hash
 from schemas import UserRegister, DatasetInfo as DatasetSchema, ChatRequest, ChatResponse
 
@@ -41,17 +41,19 @@ app = FastAPI(
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
-# Configure CORS
+# Configure CORS - Read from environment variable
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:80").split(",")
+logger.info(f"Configuring CORS for origins: {CORS_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include authentication router
-from auth_router import router as auth_router
 app.include_router(auth_router)
 
 # Configuration

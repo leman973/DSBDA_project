@@ -21,10 +21,14 @@ export default function Login({ onLogin }) {
       formData.append("username", username);
       formData.append("password", password);
 
+      console.log("Attempting login to:", `${API_BASE}/auth/login`);
+      
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         body: formData,
       });
+
+      console.log("Response status:", response.status);
 
       if (!response.ok) {
         const errorData = await response.json();

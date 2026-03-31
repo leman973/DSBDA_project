@@ -31,6 +31,8 @@ export default function Register() {
     setIsLoading(true);
 
     try {
+      console.log("Attempting registration to:", `${API_BASE}/auth/register`);
+      
       const response = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
         headers: {
@@ -42,6 +44,8 @@ export default function Register() {
           password,
         }),
       });
+
+      console.log("Response status:", response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
