@@ -13,10 +13,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Make sure Ollama is running with Mistral model:
+3. Configure Gemini API:
 ```bash
-ollama pull mistral
-ollama serve
+export GEMINI_API_KEY=your-gemini-api-key
+export GEMINI_MODEL=gemini-2.5-flash
 ```
 
 4. Run the backend:

@@ -23,16 +23,6 @@ fi
 echo "✅ Docker found!"
 echo ""
 
-# Check if Ollama is running
-if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo "⚠️  Ollama is not running. Please start Ollama with: ollama serve"
-    echo "   Then run this script again."
-    exit 1
-fi
-
-echo "✅ Ollama is running!"
-echo ""
-
 # Check if .env exists
 if [ ! -f .env ]; then
     echo "📝 Creating .env file from template..."
@@ -43,6 +33,13 @@ if [ ! -f .env ]; then
     echo "   You can generate one using: openssl rand -hex 32"
     echo ""
     read -p "Press Enter after you've updated the SECRET_KEY..."
+fi
+
+# Ensure Gemini API key is set
+if ! grep -q "^GEMINI_API_KEY=" .env || grep -q "^GEMINI_API_KEY=$" .env; then
+    echo "❌ GEMINI_API_KEY is missing in .env"
+    echo "   Add your Gemini API key and run this script again."
+    exit 1
 fi
 
 # Ask user for deployment type

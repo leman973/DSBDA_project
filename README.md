@@ -1,6 +1,6 @@
 # DSBDA Data Analysis Assistant
 
-A natural language data analysis tool that allows users to upload datasets and query them using plain English. The application uses an LLM (Mistral via Ollama) to understand user queries and perform data analysis.
+A natural language data analysis tool that allows users to upload datasets and query them using plain English. The application uses Gemini API to understand user queries and perform data analysis.
 
 ## 🔐 New Features
 
@@ -12,11 +12,11 @@ A natural language data analysis tool that allows users to upload datasets and q
 ## Architecture
 
 ```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│   Frontend      │──────│   Backend       │──────│   Ollama        │
-│   (React/Vite)  │      │   (FastAPI)     │      │   (Mistral)     │
-│   Port 5173     │      │   Port 8000     │      │   Port 11434    │
-└─────────────────┘      └─────────────────┘      └─────────────────┘
+┌─────────────────┐      ┌─────────────────┐      ┌────────────────────┐
+│   Frontend      │──────│   Backend       │──────│   Gemini API       │
+│   (React/Vite)  │      │   (FastAPI)     │      │   (Google)         │
+│   Port 5173     │      │   Port 8000     │      │   HTTPS            │
+└─────────────────┘      └─────────────────┘      └────────────────────┘
 ```
 
 ## Project Structure
@@ -53,13 +53,13 @@ DSBDA_project/
 
 ### For Docker Deployment (Recommended):
 1. **Docker Desktop** - Docker and docker-compose
-2. **Ollama** - Running on host machine with Mistral model
+2. **Gemini API key** - For LLM inference
 
 ### For Local Development:
 1. **Node.js** (v18+) - For running the frontend
 2. **Python 3.10+** - For running the backend
 3. **PostgreSQL 15+** - Database server
-4. **Ollama** - For running the Mistral LLM
+4. **Gemini API key** - For running the Gemini LLM
 
 ## Installation & Setup
 
@@ -80,20 +80,14 @@ docker-compose up --build
 
 ### Local Development Setup
 
-### 1. Install Ollama
+### 1. Configure Gemini API
 
 ```bash
-# macOS
-brew install ollama
-
-# Linux
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Start Ollama service
-ollama serve
-
-# Pull the Mistral model (first time only)
-ollama pull mistral
+Create a `.env` file and set:
+```bash
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
+```
 ```
 
 ### 2. Backend Setup
@@ -167,8 +161,9 @@ npm run dev
 ### Backend (.env)
 
 ```bash
-# Ollama URL (default: http://localhost:11434)
-OLLAMA_URL=http://localhost:11434
+# Gemini API configuration
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
 
 # Database Configuration
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dsbda_db
@@ -186,11 +181,11 @@ See `.env.example` for full list of configuration options.
 
 ## Troubleshooting
 
-### Ollama not running
+### Gemini API key missing
 ```
-Error: Ollama is not running. Please start Ollama with 'ollama serve'
+GEMINI_API_KEY is not configured on the backend
 ```
-**Solution**: Run `ollama serve` in a terminal
+**Solution**: Add `GEMINI_API_KEY` in `.env` and restart backend
 
 ### CORS errors
 ```
@@ -198,11 +193,11 @@ Access to fetch at 'http://localhost:8000/api/...' has been blocked by CORS poli
 ```
 **Solution**: Ensure backend is running and CORS is configured to allow your frontend origin
 
-### Model not found
+### Gemini authentication failed
 ```
-Error: model 'mistral' not found
+Gemini API authentication failed. Check GEMINI_API_KEY.
 ```
-**Solution**: Run `ollama pull mistral` to download the model
+**Solution**: Verify the key and ensure billing/quota are enabled on your Google project
 
 ## Tech Stack
 
@@ -210,7 +205,7 @@ Error: model 'mistral' not found
 - **Backend**: Python, FastAPI, Pandas, SQLAlchemy
 - **Database**: PostgreSQL 15
 - **Authentication**: JWT (JSON Web Tokens), Bcrypt password hashing
-- **LLM**: Ollama with Mistral model
+- **LLM**: Gemini API (`gemini-2.5-flash` by default)
 - **Deployment**: Docker, Docker Compose
 
 ## License

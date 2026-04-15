@@ -161,6 +161,16 @@ export default function DataAnalysisAssistant({ onLogout }) {
   const messagesEndRef = useRef(null);
 
   const getToken = () => localStorage.getItem('token');
+  const getAuthHeader = () => {
+    const token = getToken();
+    if (!token) return null;
+    return { 'Authorization': `Bearer ${token}` };
+  };
+
+  const handleUnauthorized = (message = 'Session expired. Please login again.') => {
+    alert(message);
+    onLogout();
+  };
 
   useEffect(() => {
     checkConnection();
@@ -175,8 +185,12 @@ export default function DataAnalysisAssistant({ onLogout }) {
   const checkConnection = async () => {
     try {
       const response = await fetch(`${API_BASE}/health`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+        headers: getAuthHeader() || {}
       });
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (response.ok) setConnectionError(null);
     } catch (error) {
       setConnectionError('Backend Unreachable');
@@ -186,8 +200,12 @@ export default function DataAnalysisAssistant({ onLogout }) {
   const fetchUserInfo = async () => {
     try {
       const response = await fetch(`${API_BASE}/auth/me`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+        headers: getAuthHeader() || {}
       });
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (response.ok) setUserInfo(await response.json());
     } catch (error) { console.error(error); }
   };
@@ -195,8 +213,12 @@ export default function DataAnalysisAssistant({ onLogout }) {
   const fetchDatasets = async () => {
     try {
       const response = await fetch(`${API_BASE}/datasets`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+        headers: getAuthHeader() || {}
       });
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (response.ok) {
         const data = await response.json();
         setDatasets(data);
@@ -206,6 +228,12 @@ export default function DataAnalysisAssistant({ onLogout }) {
   };
 
   const uploadFiles = async (files) => {
+    const authHeader = getAuthHeader();
+    if (!authHeader) {
+      handleUnauthorized();
+      return;
+    }
+
     setIsLoading(true);
     try {
       for (const file of files) {
@@ -213,16 +241,27 @@ export default function DataAnalysisAssistant({ onLogout }) {
         formData.append('file', file);
         const response = await fetch(`${API_BASE}/datasets/upload`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${getToken()}` },
+          headers: authHeader,
           body: formData,
         });
-        if (!response.ok) throw new Error(`Upload failed`);
+        if (response.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        if (!response.ok) {
+          let detail = 'Upload failed';
+          try {
+            const errorBody = await response.json();
+            detail = errorBody?.detail || detail;
+          } catch {}
+          throw new Error(detail);
+        }
         const datasetInfo = await response.json();
         setDatasets(prev => [datasetInfo, ...prev]);
         setSelectedDataset(datasetInfo);
       }
     } catch (error) {
-      alert(`Upload failed`);
+      alert(error.message || 'Upload failed');
     } finally {
       setIsLoading(false);
     }
@@ -234,8 +273,12 @@ export default function DataAnalysisAssistant({ onLogout }) {
     try {
       const response = await fetch(`${API_BASE}/datasets/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+        headers: getAuthHeader() || {}
       });
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (response.ok) {
         setDatasets(prev => prev.filter(ds => ds.id !== id));
         if (selectedDataset?.id === id) setSelectedDataset(null);
@@ -251,18 +294,38 @@ export default function DataAnalysisAssistant({ onLogout }) {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     
     try {
+      const authHeader = getAuthHeader();
+      if (!authHeader) {
+        handleUnauthorized();
+        return;
+      }
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
+          ...authHeader
         },
         body: JSON.stringify({
           message: userMessage,
           dataset_id: selectedDataset.id,
-          history: messages.slice(-10)
+          history: messages.slice(-10).map((msg) => ({
+            role: String(msg.role || ''),
+            content: String(msg.content || '')
+          }))
         })
       });
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      if (!response.ok) {
+        let detail = 'Query failed';
+        try {
+          const errorBody = await response.json();
+          detail = errorBody?.detail || detail;
+        } catch {}
+        throw new Error(detail);
+      }
       const result = await response.json();
       setMessages(prev => [...prev, { 
         role: 'assistant', 

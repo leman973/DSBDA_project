@@ -1,6 +1,6 @@
 """
 DSBDA Backend - Data Analysis Assistant API
-Uses Ollama with Mistral model for natural language data analysis
+Uses Gemini API for natural language data analysis
 """
 
 import os
@@ -24,12 +24,17 @@ import json
 import models
 from database import engine, get_db
 from auth_router import router as auth_router, get_current_user
-from auth_utils import get_password_hash
+from dotenv import load_dotenv
 from schemas import UserRegister, DatasetInfo as DatasetSchema, ChatRequest, ChatResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Load environment from project and backend .env files when present.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Initialize FastAPI
 app = FastAPI(
@@ -98,43 +103,115 @@ class DatasetInfo(BaseModel):
     columns_info: List[Dict[str, str]]
     created_at: str
 
+
+def _extract_readable_response(raw_response: str) -> str:
+    """Return plain, human-readable text from raw model output."""
+    if not raw_response:
+        return "I could not generate a response. Please try again."
+
+    text = raw_response.strip()
+
+    def pick_text_field(obj: dict) -> str:
+        for key in ("response", "answer", "summary", "text", "message"):
+            value = obj.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ""
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            extracted = pick_text_field(parsed)
+            if extracted:
+                return extracted
+    except json.JSONDecodeError:
+        pass
+
+    if "{" in text and "}" in text:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        candidate = text[start:end]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                extracted = pick_text_field(parsed)
+                if extracted:
+                    return extracted
+        except json.JSONDecodeError:
+            pass
+
+    return text
+
 # ============= Helper Functions =============
 
-def get_ollama_url() -> str:
-    """Get Ollama API URL from environment or use default"""
-    return os.getenv("OLLAMA_URL", "http://localhost:11434")
+def get_gemini_api_key() -> str:
+    """Get Gemini API key from environment."""
+    return os.getenv("GEMINI_API_KEY", "").strip()
 
-def get_ollama_model() -> str:
-    """Get Ollama model name from environment or use default"""
-    return os.getenv("OLLAMA_MODEL", "mistral")
 
-async def call_ollama(prompt: str, system_prompt: str = "") -> str:
-    """Call Ollama API with configured model"""
-    url = f"{get_ollama_url()}/api/generate"
-    
+def get_gemini_model() -> str:
+    """Get Gemini model name from environment or use default."""
+    return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def get_gemini_base_url() -> str:
+    return os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
+
+
+async def call_gemini(prompt: str, system_prompt: str = "") -> str:
+    """Call Gemini API with configured model."""
+    api_key = get_gemini_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="GEMINI_API_KEY is not configured on the backend."
+        )
+
+    model = get_gemini_model()
+    url = f"{get_gemini_base_url()}/models/{model}:generateContent"
     payload = {
-        "model": get_ollama_model(),
-        "prompt": prompt,
-        "system": system_prompt,
-        "stream": False
+        "system_instruction": {
+            "parts": [{"text": system_prompt or "You are a helpful data analysis assistant."}]
+        },
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 768
+        }
     }
-    
+
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(url, json=payload)
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.post(
+                url,
+                params={"key": api_key},
+                json=payload
+            )
+
+            if response.status_code in (401, 403):
+                raise HTTPException(status_code=502, detail="Gemini API authentication failed. Check GEMINI_API_KEY.")
+            if response.status_code == 429:
+                raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please retry shortly.")
+
             response.raise_for_status()
             result = response.json()
-            return result.get("response", "")
-    except httpx.ConnectError:
-        raise HTTPException(
-            status_code=503, 
-            detail="Ollama is not running. Please start Ollama with 'ollama serve'"
-        )
+            candidates = result.get("candidates", [])
+            if not candidates:
+                raise HTTPException(status_code=502, detail="Gemini returned no response candidates.")
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
+            output = "\n".join(text_parts).strip()
+            if not output:
+                raise HTTPException(status_code=502, detail="Gemini response did not include text content.")
+            return output
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Request to Ollama timed out")
+        raise HTTPException(status_code=504, detail="Request to Gemini timed out")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error calling Ollama: {e}")
-        raise HTTPException(status_code=500, detail=f"Error calling LLM: {str(e)}")
+        logger.error(f"Error calling Gemini API: {e}")
+        raise HTTPException(status_code=500, detail=f"Error calling Gemini API: {str(e)}")
 
 def load_dataframe(dataset_id: str) -> pd.DataFrame:
     """Load dataset as pandas DataFrame"""
@@ -240,8 +317,8 @@ async def root():
     return {
         "message": "DSBDA Data Analysis API",
         "version": "1.0.0",
-        "ollama_url": get_ollama_url(),
-        "ollama_model": get_ollama_model()
+        "llm_provider": "gemini",
+        "gemini_model": get_gemini_model()
     }
 
 @app.post("/api/datasets/upload", response_model=DatasetSchema)
@@ -429,7 +506,8 @@ async def get_dataset_data(
         raise HTTPException(status_code=400, detail="Offset must be non-negative")
     
     try:
-        df = load_dataframe(dataset_id)
+        # Load from database-backed file path to work across backend restarts.
+        df = load_dataframe_from_path(dataset.file_path)
         
         # Apply filters if provided
         if filters:
@@ -471,7 +549,8 @@ async def get_dataset_summary(
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     try:
-        df = load_dataframe(dataset_id)
+        # Load from database-backed file path to work across backend restarts.
+        df = load_dataframe_from_path(dataset.file_path)
         return generate_dataset_summary(df)
     except Exception as e:
         logger.error(f"Error generating summary: {e}")
@@ -495,114 +574,20 @@ async def chat(
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     try:
-        df = load_dataframe(request.dataset_id)
+        # Load from database-backed file path to work across backend restarts.
+        df = load_dataframe_from_path(dataset.file_path)
         dataset_info_cached = datasets_cache.get(request.dataset_id, {})
         
         # Get column information
         columns_info = json.loads(dataset.columns_info) if dataset.columns_info else []
         columns_str = ", ".join([f"{c['name']} ({c['type']})" for c in columns_info])
         
-        # Get sample data (first 20 rows)
-        sample_data = df.head(20).to_csv(index=False)
-        
-        # Build the prompt with enhanced chart generation capabilities
-        system_prompt = """You are an expert data analysis assistant specializing in visualization and statistical analysis.
-
-Your core capabilities:
-1. **Data Analysis**: Analyze datasets to find patterns, trends, correlations, and insights
-2. **Chart Generation**: Create production-ready Vega-Lite specifications for various chart types
-3. **Statistical Analysis**: Calculate means, medians, modes, correlations, distributions, etc.
-4. **Data Transformation**: Aggregate, filter, group, and transform data as needed
-
-## CHART GENERATION RULES:
-
-When the user asks for any visualization (chart, graph, plot), you MUST return a valid Vega-Lite JSON specification.
-
-### Available Chart Types and When to Use:
-
-1. **Bar Chart** (`mark: "bar"`):
-   - Categorical comparisons
-   - Frequency distributions
-   - Top-N rankings
-   - Use when: comparing values across categories
-
-2. **Line Chart** (`mark: "line"`):
-   - Time series data
-   - Trends over time
-   - Continuous data
-   - Use when: showing data changes over time or continuous variable
-
-3. **Area Chart** (`mark: {"type": "area"}`):
-   - Cumulative trends
-   - Volume over time
-   - Use when: emphasizing magnitude of change
-
-4. **Scatter Plot** (`mark: "point"`):
-   - Correlation between two numeric variables
-   - Outlier detection
-   - Use when: showing relationship between two numeric variables
-
-5. **Pie/Donut Chart** (`mark: {"type": "pie"}` or `"donut"`):
-   - Proportional distribution
-   - Part-to-whole relationships
-   - Use when: showing percentage breakdown (limit to 5-7 categories)
-
-6. **Histogram** (`mark: "bar"` with binning):
-   - Distribution of numeric data
-   - Use when: showing frequency distributions
-
-7. **Box Plot** (`mark: "boxplot"`):
-   - Statistical distributions
-   - Use when: showing quartiles and outliers
-
-### Vega-Lite Specification Format:
-
-```json
-{
-  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-  "width": "container",
-  "height": 300,
-  "title": "Your Chart Title",
-  "data": {
-    "values": []
-  },
-  "mark": "bar",
-  "encoding": {
-    "x": {"field": "column_name", "type": "quantitative|ordinal|nominal|temporal", "title": "X Axis Label"},
-    "y": {"field": "value_column", "type": "quantitative|ordinal", "title": "Y Axis Label"},
-    "color": {"field": "category_column", "type": "nominal"},
-    "tooltip": [{"field": "column1"}, {"field": "column2"}]
-  }
-}
-```
-
-### Chart Best Practices:
-- Always set appropriate axis titles
-- Use clear, descriptive titles
-- Choose correct data types (quantitative for numbers, nominal for categories, temporal for dates)
-- For pie charts: limit to top categories, group rest as "Other"
-- For time series: use temporal type on x-axis
-- Use tooltips for interactivity
-- Use color schemes appropriately
-
-## DATA ANALYSIS RULES:
-
-1. Always calculate actual statistics from the data
-2. Provide specific numbers and percentages
-3. Identify trends and patterns
-4. Note any outliers or anomalies
-5. For correlations: interpret as strong/moderate/weak
-
-## RESPONSE FORMAT:
-
-You must return a JSON object with these fields:
-{
-    "response": "Your detailed text analysis with specific numbers and insights",
-    "chart_spec": {},
-    "data": []
-}
-
-IMPORTANT: Always respond in valid JSON format."""
+        # Keep context compact for faster responses.
+        sample_data = df.head(8).to_csv(index=False)
+        system_prompt = """You are a data analysis assistant.
+Respond in plain, human-readable text (not JSON).
+Keep answers concise, with bullet points and concrete numbers where relevant.
+Only provide JSON if the user explicitly asks for chart spec JSON."""
 
         # Generate summary statistics for context
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
@@ -614,36 +599,15 @@ Columns: {columns_str}
 Numeric columns: {numeric_cols}
 Categorical columns: {cat_cols}
 
-Sample data (first 20 rows):
+Sample data (first 8 rows):
 {sample_data}
 
 User question: {request.message}"""
 
-        # Call Ollama
-        llm_response = await call_ollama(context, system_prompt)
+        # Call Gemini
+        llm_response = await call_gemini(context, system_prompt)
         
-        # Parse LLM response
-        try:
-            # Try to extract JSON from response
-            response_text = llm_response.strip()
-            
-            # Handle responses that might have text before/after JSON
-            if "{" in response_text:
-                start = response_text.find("{")
-                end = response_text.rfind("}") + 1
-                json_str = response_text[start:end]
-                parsed = json.loads(json_str)
-                
-                return ChatResponse(
-                    response=parsed.get("response", llm_response),
-                    chart_spec=parsed.get("chart_spec"),
-                    data=parsed.get("data")
-                )
-            else:
-                return ChatResponse(response=llm_response)
-        except json.JSONDecodeError:
-            # If not valid JSON, return as text
-            return ChatResponse(response=llm_response)
+        return ChatResponse(response=_extract_readable_response(llm_response))
     
     except HTTPException:
         raise
@@ -687,14 +651,21 @@ async def health_check(
     db: Session = Depends(get_db)
 ):
     """Health check endpoint (requires authentication)"""
-    ollama_status = "unknown"
-    
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{get_ollama_url()}/api/tags")
-            ollama_status = "connected" if response.status_code == 200 else "error"
-    except:
-        ollama_status = "disconnected"
+    gemini_status = "unknown"
+    api_key_configured = bool(get_gemini_api_key())
+
+    if api_key_configured:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                response = await client.get(
+                    f"{get_gemini_base_url()}/models",
+                    params={"key": get_gemini_api_key()}
+                )
+                gemini_status = "connected" if response.status_code == 200 else "error"
+        except Exception:
+            gemini_status = "disconnected"
+    else:
+        gemini_status = "not_configured"
     
     # Count user's datasets
     datasets_count = db.query(models.Dataset).filter(
@@ -703,7 +674,10 @@ async def health_check(
     
     return {
         "status": "healthy",
-        "ollama": ollama_status,
+        "llm_provider": "gemini",
+        "gemini": gemini_status,
+        "gemini_model": get_gemini_model(),
+        "gemini_api_key_configured": api_key_configured,
         "datasets_count": datasets_count,
         "user": current_user.username
     }

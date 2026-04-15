@@ -32,7 +32,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/dsbda_db
-      OLLAMA_URL: http://host.docker.internal:11434
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
       CORS_ORIGINS: http://localhost:5173,http://localhost:80
@@ -40,8 +41,6 @@ services:
       - "8000:8000"
     volumes:
       - backend_uploads:/app/uploads
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - dsbda_network
     restart: unless-stopped

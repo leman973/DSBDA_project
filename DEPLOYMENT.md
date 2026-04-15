@@ -27,8 +27,7 @@ This guide covers the authentication system and Docker deployment for the DSBDA 
 
 #### Prerequisites
 - Docker Desktop installed
-- Ollama running on your host machine (`ollama serve`)
-- Mistral model pulled (`ollama pull mistral`)
+- Gemini API key with billing/quota enabled
 
 #### Steps
 
@@ -210,9 +209,9 @@ curl -X GET http://localhost:8000/api/datasets \
                                 │
                                 ↓
                          ┌─────────────────┐
-                         │   Ollama        │
-                         │   (Mistral)     │
-                         │   Port 11434    │
+                         │   Gemini API    │
+                         │   (Google)      │
+                         │   HTTPS         │
                          └─────────────────┘
 ```
 
@@ -301,17 +300,13 @@ docker-compose logs backend
 - Verify credentials are correct
 - Check if user exists in database
 
-### Ollama connection issues
+### Gemini connection issues
 
-**Error: Ollama is not running**
+**Error: Gemini API authentication failed**
 
-In Docker:
-- Ensure Ollama is running on host: `ollama serve`
-- Check `host.docker.internal` resolves correctly
-
-In local development:
-- Run `ollama serve` in separate terminal
-- Verify OLLAMA_URL in .env
+- Verify `GEMINI_API_KEY` in `.env`
+- Ensure API key has access to Gemini API
+- Ensure billing/quota is enabled in Google Cloud
 
 ### Frontend build errors
 
@@ -333,18 +328,13 @@ Edit `.env`:
 ACCESS_TOKEN_EXPIRE_MINUTES=60  # 1 hour
 ```
 
-### Using Different LLM Model
+### Using Different Gemini Model
 
 Edit `.env`:
 ```env
-OLLAMA_MODEL=llama2
+GEMINI_MODEL=gemini-1.5-pro
 # or
-OLLAMA_MODEL=codellama
-```
-
-Then pull the model:
-```bash
-ollama pull llama2
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ### Production Database
