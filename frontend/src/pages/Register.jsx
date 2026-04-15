@@ -18,6 +18,11 @@ export default function Register() {
     e.preventDefault();
     setError("");
 
+    if (!/^[a-zA-Z0-9]+$/.test(username)) {
+      setError("Username must contain only letters and numbers");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
@@ -109,6 +114,8 @@ export default function Register() {
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={isLoading}
                   placeholder="arjunp"
+                  pattern="[a-zA-Z0-9]+"
+                  title="Only letters and numbers are allowed"
                   className="w-full pl-10 pr-4 py-3 rounded-xl glass border-white/40 focus:border-primary/50 focus:ring-4 focus:ring-primary/5 outline-none transition-all text-sm font-medium"
                   required
                 />

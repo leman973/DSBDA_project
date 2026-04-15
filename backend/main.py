@@ -42,7 +42,11 @@ app = FastAPI(
 models.Base.metadata.create_all(bind=engine)
 
 # Configure CORS - Read from environment variable
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:80").split(",")
+# Include both localhost and 127.0.0.1 defaults for local dev.
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:80,http://127.0.0.1:80"
+).split(",")
 logger.info(f"Configuring CORS for origins: {CORS_ORIGINS}")
 
 app.add_middleware(
@@ -161,6 +165,26 @@ def load_dataframe(dataset_id: str) -> pd.DataFrame:
     else:
         raise HTTPException(status_code=400, detail="Unsupported file format")
 
+def load_dataframe_from_path(file_path: str) -> pd.DataFrame:
+    """Load dataset as pandas DataFrame directly from a file path."""
+    if file_path.endswith(".csv"):
+        return pd.read_csv(file_path)
+    elif file_path.endswith((".xlsx", ".xls")):
+        return pd.read_excel(file_path)
+    elif file_path.endswith(".pdf"):
+        with pdfplumber.open(file_path) as pdf:
+            all_tables = []
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in tables:
+                    if table and len(table) > 1:
+                        all_tables.append(table)
+            if not all_tables:
+                raise HTTPException(status_code=400, detail="No tables found in PDF.")
+            return pd.DataFrame(all_tables[0][1:], columns=all_tables[0][0])
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file format")
+
 def get_columns_info(df: pd.DataFrame) -> List[Dict[str, str]]:
     """Get information about DataFrame columns"""
     columns = []
@@ -263,7 +287,8 @@ async def upload_dataset(
     
     # Load and validate data
     try:
-        df = load_dataframe(dataset_id)
+        # During upload, dataset is not cached yet, so read directly from saved path.
+        df = load_dataframe_from_path(str(file_path))
         
         # Check row limit
         if len(df) > MAX_ROWS_IN_MEMORY:
