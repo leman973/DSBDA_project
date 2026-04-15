@@ -6,6 +6,8 @@ Uses Gemini API for natural language data analysis
 import os
 import json
 import uuid
+import asyncio
+import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -140,6 +142,21 @@ def _extract_readable_response(raw_response: str) -> str:
         except json.JSONDecodeError:
             pass
 
+    # Recover plain text when model returns broken/incomplete JSON text.
+    if text.lstrip().startswith("{"):
+        match = re.search(r'"response"\s*:\s*"([^"]*)', text, flags=re.DOTALL)
+        if match:
+            cleaned = match.group(1).replace("\\n", "\n").strip()
+            if cleaned:
+                return cleaned
+
+        # Last-resort cleanup: remove braces/keys so user never sees raw JSON.
+        cleaned = re.sub(r'[\{\}\[\]"]', " ", text)
+        cleaned = re.sub(r'\b(response|chart_spec|data)\b\s*:\s*', "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\s+', " ", cleaned).strip()
+        if cleaned:
+            return cleaned
+
     return text
 
 # ============= Helper Functions =============
@@ -158,7 +175,7 @@ def get_gemini_base_url() -> str:
     return os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
 
 
-async def call_gemini(prompt: str, system_prompt: str = "") -> str:
+async def call_gemini(prompt: str, system_prompt: str = "", expect_json: bool = False) -> str:
     """Call Gemini API with configured model."""
     api_key = get_gemini_api_key()
     if not api_key:
@@ -169,42 +186,58 @@ async def call_gemini(prompt: str, system_prompt: str = "") -> str:
 
     model = get_gemini_model()
     url = f"{get_gemini_base_url()}/models/{model}:generateContent"
+    generation_config = {
+        "temperature": 0.2,
+        "maxOutputTokens": 768
+    }
+    if expect_json:
+        generation_config["response_mime_type"] = "application/json"
+
     payload = {
         "system_instruction": {
             "parts": [{"text": system_prompt or "You are a helpful data analysis assistant."}]
         },
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 768
-        }
+        "generationConfig": generation_config
     }
 
     try:
+        max_attempts = 3
         async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(
-                url,
-                params={"key": api_key},
-                json=payload
-            )
+            for attempt in range(1, max_attempts + 1):
+                response = await client.post(
+                    url,
+                    params={"key": api_key},
+                    json=payload
+                )
 
-            if response.status_code in (401, 403):
-                raise HTTPException(status_code=502, detail="Gemini API authentication failed. Check GEMINI_API_KEY.")
-            if response.status_code == 429:
-                raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please retry shortly.")
+                if response.status_code in (401, 403):
+                    raise HTTPException(status_code=502, detail="Gemini API authentication failed. Check GEMINI_API_KEY.")
+                if response.status_code == 429:
+                    if attempt < max_attempts:
+                        await asyncio.sleep(0.8 * attempt)
+                        continue
+                    raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please retry shortly.")
+                if response.status_code >= 500:
+                    if attempt < max_attempts:
+                        await asyncio.sleep(0.8 * attempt)
+                        continue
+                    raise HTTPException(status_code=503, detail="Gemini API is temporarily unavailable. Please retry.")
 
-            response.raise_for_status()
-            result = response.json()
-            candidates = result.get("candidates", [])
-            if not candidates:
-                raise HTTPException(status_code=502, detail="Gemini returned no response candidates.")
+                response.raise_for_status()
+                result = response.json()
+                candidates = result.get("candidates", [])
+                if not candidates:
+                    raise HTTPException(status_code=502, detail="Gemini returned no response candidates.")
 
-            parts = candidates[0].get("content", {}).get("parts", [])
-            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
-            output = "\n".join(text_parts).strip()
-            if not output:
-                raise HTTPException(status_code=502, detail="Gemini response did not include text content.")
-            return output
+                parts = candidates[0].get("content", {}).get("parts", [])
+                text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
+                output = "\n".join(text_parts).strip()
+                if not output:
+                    raise HTTPException(status_code=502, detail="Gemini response did not include text content.")
+                return output
+
+        raise HTTPException(status_code=503, detail="Gemini API is temporarily unavailable. Please retry.")
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Request to Gemini timed out")
     except HTTPException:
@@ -261,6 +294,129 @@ def load_dataframe_from_path(file_path: str) -> pd.DataFrame:
             return pd.DataFrame(all_tables[0][1:], columns=all_tables[0][0])
     else:
         raise HTTPException(status_code=400, detail="Unsupported file format")
+
+
+def is_chart_intent(message: str) -> bool:
+    """Heuristic detection of chart/visualization intent."""
+    text = (message or "").lower()
+    chart_keywords = [
+        "chart", "plot", "graph", "visual", "visualization", "vega", "vega-lite",
+        "bar chart", "line chart", "scatter", "histogram", "pie chart", "donut",
+        "box plot", "heatmap", "show trend", "draw"
+    ]
+    return any(keyword in text for keyword in chart_keywords)
+
+
+def extract_json_object(text: str) -> Optional[dict]:
+    """Best-effort JSON extraction from raw model text."""
+    if not text:
+        return None
+    raw = text.strip()
+
+    # Direct JSON
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # JSON inside markdown/code wrapper
+    if "{" in raw and "}" in raw:
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        candidate = raw[start:end]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def normalize_chart_payload(raw_text: str) -> dict:
+    """Normalize model output into {response, chart_spec, data}."""
+    parsed = extract_json_object(raw_text)
+    if not parsed:
+        return {
+            "response": _extract_readable_response(raw_text),
+            "chart_spec": None,
+            "data": None,
+        }
+
+    response_text = parsed.get("response")
+    chart_spec = parsed.get("chart_spec")
+    data = parsed.get("data")
+
+    # Some models put entire JSON in the `response` string; parse again.
+    if (not isinstance(chart_spec, dict) or not isinstance(data, list)) and isinstance(response_text, str):
+        nested = extract_json_object(response_text)
+        if isinstance(nested, dict):
+            response_text = nested.get("response", response_text)
+            if isinstance(nested.get("chart_spec"), dict):
+                chart_spec = nested.get("chart_spec")
+            if isinstance(nested.get("data"), list):
+                data = nested.get("data")
+
+    # If chart data was embedded in chart_spec only, mirror it to `data`.
+    if isinstance(chart_spec, dict) and not isinstance(data, list):
+        values = chart_spec.get("data", {}).get("values") if isinstance(chart_spec.get("data"), dict) else None
+        if isinstance(values, list):
+            data = values
+
+    return {
+        "response": _extract_readable_response(response_text if isinstance(response_text, str) else raw_text),
+        "chart_spec": chart_spec if isinstance(chart_spec, dict) else None,
+        "data": data if isinstance(data, list) else None,
+    }
+
+
+def build_fallback_chart_payload(df: pd.DataFrame) -> tuple[Optional[dict], Optional[list]]:
+    """Create a simple valid Vega-Lite chart when model chart JSON is missing."""
+    if df is None or df.empty:
+        return None, None
+
+    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+    cat_cols = [c for c in df.columns if c not in numeric_cols]
+
+    # Prefer line chart for numeric trend by index if only numeric data available.
+    if numeric_cols and not cat_cols:
+        y_col = numeric_cols[0]
+        values = [{"index": int(i), y_col: float(v) if pd.notna(v) else None} for i, v in enumerate(df[y_col].head(50))]
+        spec = {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "title": f"{y_col} trend",
+            "data": {"values": values},
+            "mark": {"type": "line", "point": True},
+            "encoding": {
+                "x": {"field": "index", "type": "quantitative", "title": "Index"},
+                "y": {"field": y_col, "type": "quantitative", "title": y_col},
+                "tooltip": [{"field": "index"}, {"field": y_col}]
+            }
+        }
+        return spec, values
+
+    # Otherwise build bar chart using first categorical + first numeric.
+    if numeric_cols and cat_cols:
+        x_col = cat_cols[0]
+        y_col = numeric_cols[0]
+        grouped = df[[x_col, y_col]].dropna().groupby(x_col, as_index=False)[y_col].mean().head(20)
+        values = grouped.to_dict(orient="records")
+        spec = {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "title": f"Average {y_col} by {x_col}",
+            "data": {"values": values},
+            "mark": "bar",
+            "encoding": {
+                "x": {"field": x_col, "type": "nominal", "title": x_col},
+                "y": {"field": y_col, "type": "quantitative", "title": f"Average {y_col}"},
+                "tooltip": [{"field": x_col}, {"field": y_col}]
+            }
+        }
+        return spec, values
+
+    return None, None
 
 def get_columns_info(df: pd.DataFrame) -> List[Dict[str, str]]:
     """Get information about DataFrame columns"""
@@ -584,10 +740,24 @@ async def chat(
         
         # Keep context compact for faster responses.
         sample_data = df.head(8).to_csv(index=False)
-        system_prompt = """You are a data analysis assistant.
+        chart_mode = is_chart_intent(request.message)
+        if chart_mode:
+            system_prompt = """You are a data analysis assistant.
+Return VALID JSON only with exactly these keys:
+{
+  "response": "human-readable insight text",
+  "chart_spec": <valid Vega-Lite v5 spec object>,
+  "data": <array of objects used by chart_spec data.values if needed>
+}
+Rules:
+- response must be clear and concise.
+- chart_spec must be valid Vega-Lite JSON.
+- Choose suitable chart type based on the user request and data.
+- Do not return markdown, code fences, or any extra keys."""
+        else:
+            system_prompt = """You are a data analysis assistant.
 Respond in plain, human-readable text (not JSON).
-Keep answers concise, with bullet points and concrete numbers where relevant.
-Only provide JSON if the user explicitly asks for chart spec JSON."""
+Keep answers concise, with bullet points and concrete numbers where relevant."""
 
         # Generate summary statistics for context
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
@@ -605,11 +775,28 @@ Sample data (first 8 rows):
 User question: {request.message}"""
 
         # Call Gemini
-        llm_response = await call_gemini(context, system_prompt)
-        
+        llm_response = await call_gemini(context, system_prompt, expect_json=chart_mode)
+
+        if chart_mode:
+            normalized = normalize_chart_payload(llm_response)
+            if not isinstance(normalized["chart_spec"], dict):
+                fallback_spec, fallback_data = build_fallback_chart_payload(df)
+                normalized["chart_spec"] = fallback_spec
+                normalized["data"] = fallback_data
+            return ChatResponse(
+                response=normalized["response"],
+                chart_spec=normalized["chart_spec"],
+                data=normalized["data"],
+            )
+
         return ChatResponse(response=_extract_readable_response(llm_response))
     
-    except HTTPException:
+    except HTTPException as e:
+        # Keep chat resilient during transient model/provider issues.
+        if e.status_code in (429, 503, 504):
+            return ChatResponse(
+                response="The AI service is temporarily busy. Please retry in a few seconds."
+            )
         raise
     except Exception as e:
         logger.error(f"Error in chat: {e}")
